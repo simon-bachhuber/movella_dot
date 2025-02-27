@@ -1,9 +1,7 @@
 import asyncio
-import csv
 from datetime import datetime
 from enum import Enum
 import multiprocessing
-import os
 import struct
 import time
 
@@ -191,7 +189,6 @@ class BleSensor:
         self.dotdata = []
         self.name = []
         self.address = address
-        self.recordFlag = False
         self.fileName = []
         self.payloadType = None
         self.characteristics = []
@@ -524,13 +521,6 @@ class BleSensor:
             time, euler[0], euler[1], euler[2]
         )
         print(stringToPrint)
-        if self.recordFlag is True:
-            dotdata = DotData()
-            dotdata.name = self.name
-            dotdata.address = self.address
-            dotdata.timestamp = time
-            dotdata.eulerAngle = euler
-            self.record_data(dotdata)
 
     def customMode1_notification_handler(self, sender, data):
         hexData = data.hex()
@@ -557,15 +547,6 @@ class BleSensor:
         )
         stringToPrint += " "
         print(stringToPrint)
-        if self.recordFlag:
-            dotdata = DotData()
-            dotdata.name = self.name
-            dotdata.address = self.address
-            dotdata.timestamp = time
-            dotdata.eulerAngle = euler
-            dotdata.freeAcc = freeAcc
-            dotdata.angularVelocity = gyro
-            self.record_data(dotdata)
 
     def orientationQuaternion_notification_handler(self, sender, data):
         # print(f"Received data: {data.hex()}")
@@ -579,13 +560,6 @@ class BleSensor:
             )
         )
         print(stringToPrint)
-        if self.recordFlag is True:
-            dotdata = DotData()
-            dotdata.name = self.name
-            dotdata.address = self.address
-            dotdata.timestamp = time
-            dotdata.quaternion = quat
-            self.record_data(dotdata)
 
     async def add_to_queue(self, sensor_data):
         if self.queue is not None:
@@ -645,121 +619,3 @@ class BleSensor:
             # Reset counter and timer
             self.notification_counter = 0
             self.start_time = datetime.now()
-
-        if self.recordFlag:
-            dotdata = DotData()
-            dotdata.name = self.name
-            dotdata.address = self.address
-            dotdata.timestamp = time
-            dotdata.acc = acc
-            dotdata.angularVelocity = gyro
-            dotdata.magneticField = mag
-            self.record_data(dotdata)
-
-    # Store data into CSV
-    def create_csvfile(self):
-        # Extract necessary information from the data
-        m_address = self.address.replace(":", "_")
-        # Create the folder path
-        folder_path = os.path.join(os.getcwd(), "data_logging")
-        # Create the folder if it does not exist
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        file_name = f"{m_address}.csv"
-        # Create the file path
-        file_path = os.path.join(folder_path, file_name)
-        # Write the title row and the data to the csv file
-        with open(file_path, mode="w", newline="") as csv_file:
-            print(f"file created: {file_name}")
-            writer = csv.writer(csv_file)
-            if self.payloadType == PayloadMode.orientationEuler:
-                writer.writerow(["SampleTimeFine", "roll", "pitch", "yaw"])
-            elif self.payloadType == PayloadMode.orientationQuaternion:
-                writer.writerow(["SampleTimeFine", "q0", "q1", "q2", "q3"])
-            elif self.payloadType == PayloadMode.customMode1:
-                writer.writerow(
-                    [
-                        "SampleTimeFine",
-                        "roll",
-                        "pitch",
-                        "yaw",
-                        "freeAccX",
-                        "freeAccY",
-                        "freeAccZ",
-                        "gyroX",
-                        "gyroY",
-                        "gyroZ",
-                    ]
-                )
-            elif self.payloadType == PayloadMode.rateQuantities:
-                writer.writerow(
-                    [
-                        "SampleTimeFine",
-                        "Acc_X",
-                        "Acc_Y",
-                        "Acc_Z",
-                        "Gyr_X",
-                        "Gyr_Y",
-                        "Gyr_Z",
-                        "Mag_X",
-                        "Mag_Y",
-                        "Mag_Z",
-                    ]
-                )
-
-        csv_file.close()
-        return file_path
-
-    def record_data(self, data):
-        # Write the new data to the existing csv file
-        with open(self.fileName, mode="a", newline="") as csv_file:
-            writer = csv.writer(csv_file)
-            if self.payloadType == PayloadMode.orientationEuler:
-                writer.writerow(
-                    [
-                        int(data.timestamp),
-                        data.eulerAngle[0],
-                        data.eulerAngle[1],
-                        data.eulerAngle[2],
-                    ]
-                )
-            elif self.payloadType == PayloadMode.orientationQuaternion:
-                writer.writerow(
-                    [
-                        data.timestamp,
-                        data.quaternion[0],
-                        data.quaternion[1],
-                        data.quaternion[2],
-                        data.quaternion[3],
-                    ]
-                )
-            elif self.payloadType == PayloadMode.customMode1:
-                writer.writerow(
-                    [
-                        data.timestamp,
-                        data.eulerAngle[0],
-                        data.eulerAngle[1],
-                        data.eulerAngle[2],
-                        data.freeAcc[0],
-                        data.freeAcc[1],
-                        data.freeAcc[2],
-                        data.angularVelocity[0],
-                        data.angularVelocity[1],
-                        data.angularVelocity[2],
-                    ]
-                )
-            elif self.payloadType == PayloadMode.rateQuantities:
-                writer.writerow(
-                    [
-                        data.timestamp,
-                        round(data.acc[0], 6),
-                        round(data.acc[1], 6),
-                        round(data.acc[2], 6),
-                        round(data.angularVelocity[0], 6),
-                        round(data.angularVelocity[1], 6),
-                        round(data.angularVelocity[2], 6),
-                        round(data.magneticField[0], 6),
-                        round(data.magneticField[1], 6),
-                        round(data.magneticField[2], 6),
-                    ]
-                )
