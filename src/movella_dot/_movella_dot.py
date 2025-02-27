@@ -1,6 +1,4 @@
 import asyncio
-from datetime import datetime
-from enum import Enum
 import multiprocessing
 import struct
 import time
@@ -27,7 +25,7 @@ class IMU:
             process.start()
             self.processes.append(process)
 
-        time.sleep(5)
+        time.sleep(3)
 
     def get_latest_measurements(
         self, short_address: bool = False
@@ -75,17 +73,12 @@ async def _read_measurement(queue, device, outputRate):
 
     # print("Starting measurement reading")
     # print(sensor)
-    sensor.payloadType = PayloadMode.rateQuantities
     sensor.queue = queue
     await sensor.startMeasurement()
 
     print("\nNotifications enabled. Waiting for data...")
     # await asyncio.sleep(0.2)  # heading reset
     print("Start Recording")
-
-    # default is no recording
-    sensor.fileName = sensor.create_csvfile()
-    sensor.recordFlag = False
 
     # Run within the timeToRunInMinute time range.
     startTimeSeconds = int(round(time.time()))
@@ -135,23 +128,6 @@ class Scanner:
         for i, d in enumerate(xsens_dot_devices):
             print(f"{i + 1}#: {d.name}, {d.address}")
         return xsens_dot_devices
-
-
-class DotData:
-    def __init__(self):
-        self.name = []
-        self.address = []
-        self.timestamp = []
-        self.acc = np.array([0, 0, 0])
-        self.angularVelocity = np.array([0, 0, 0])
-        self.magneticField = np.array([0, 0, 0])
-
-
-class PayloadMode(Enum):
-    orientationEuler = 0
-    orientationQuaternion = 1
-    customMode1 = 2
-    rateQuantities = 3
 
 
 class BleSensor:
@@ -312,45 +288,13 @@ class BleSensor:
         await asyncio.sleep(0.1)  # wait for response
 
     async def startMeasurement(self):
-        # print("starting measurement")
-        if self.payloadType == PayloadMode.orientationEuler:
-            print("PayloadMode = orientationEuler")
-            await self._client.start_notify(
-                self.DOT_ShortPayload_CharacteristicUUID,
-                self.orientationEuler_notification_handler,
-            )
-            await self.enable_sensor(
-                self.DOT_Control_CharacteristicUUID, self.Select_Orientation_Euler
-            )
-
-        elif self.payloadType == PayloadMode.orientationQuaternion:
-            print("PayloadMode = orientationQuaternion")
-            await self.enable_sensor(
-                self.DOT_Control_CharacteristicUUID, self.Select_Orientation_Quaternion
-            )
-            await self._client.start_notify(
-                self.DOT_ShortPayload_CharacteristicUUID,
-                self.orientationQuaternion_notification_handler,
-            )
-        elif self.payloadType == PayloadMode.customMode1:
-            print("PayloadMode = customMode1")
-            await self.enable_sensor(
-                self.DOT_Control_CharacteristicUUID, self.Select_CustomMode1
-            )
-            await self._client.start_notify(
-                self.DOT_MediumPayload_CharacteristicUUID,
-                self.customMode1_notification_handler,
-            )
-
-        elif self.payloadType == PayloadMode.rateQuantities:
-            print("PayloadMode = rateQuantities")
-            await self.enable_sensor(
-                self.DOT_Control_CharacteristicUUID, self.Select_ratequantities
-            )
-            await self._client.start_notify(
-                self.DOT_MediumPayload_CharacteristicUUID,
-                self.rateQuantities_notification_handler,
-            )
+        await self.enable_sensor(
+            self.DOT_Control_CharacteristicUUID, self.Select_ratequantities
+        )
+        await self._client.start_notify(
+            self.DOT_MediumPayload_CharacteristicUUID,
+            self.rateQuantities_notification_handler,
+        )
 
     # Disconnecting sensors and Stop Measurement
     async def disable_sensor(self, control_uuid, payload):
@@ -370,67 +314,17 @@ class BleSensor:
             print(f"power off sensor  {self.address} : {e}")
 
     async def stopMeasurement(self):
-        if self.payloadType == PayloadMode.orientationEuler:
-            print("Stop Measurement PayloadMode = orientationEuler")
-            try:
-                await self.disable_sensor(
-                    self.DOT_Control_CharacteristicUUID, self.Deselect_Orientation_Euler
-                )
-                print("disable sensor successful")
-            except bleak.exc.BleakError as e:
-                print(f"Error disable sensor: {e}")
-
-            try:
-                await self._client.stop_notify(self.DOT_ShortPayload_CharacteristicUUID)
-            except bleak.exc.BleakError as e:
-                print(f"Error stopping notification: {e}")
-
-        elif self.payloadType == PayloadMode.orientationQuaternion:
-            print("Stop Measurement PayloadMode = orientationQuaternion")
-            try:
-                await self.disable_sensor(
-                    self.DOT_Control_CharacteristicUUID,
-                    self.Deselect_Orientation_Quaternion,
-                )
-                print("disable sensor successful")
-            except bleak.exc.BleakError as e:
-                print(f"Error disable sensor: {e}")
-            try:
-                await self._client.stop_notify(self.DOT_ShortPayload_CharacteristicUUID)
-            except bleak.exc.BleakError as e:
-                print(f"Error stopping notification: {e}")
-
-        elif self.payloadType == PayloadMode.customMode1:
-            print("Stop Measurement PayloadMode = customMode1")
-            try:
-                await self.disable_sensor(
-                    self.DOT_Control_CharacteristicUUID, self.Deselect_CustomMode1
-                )
-                print("disable sensor successful")
-            except bleak.exc.BleakError as e:
-                print(f"Error disable sensor: {e}")
-            try:
-                await self._client.stop_notify(
-                    self.DOT_MediumPayload_CharacteristicUUID
-                )
-            except bleak.exc.BleakError as e:
-                print(f"Error stopping notification: {e}")
-
-        elif self.payloadType == PayloadMode.rateQuantities:
-            print("Stop Measurement PayloadMode = ratequantities")
-            try:
-                await self.disable_sensor(
-                    self.DOT_Control_CharacteristicUUID, self.Deselect_ratequantities
-                )
-                print("disable sensor successful")
-            except bleak.exc.BleakError as e:
-                print(f"Error disable sensor: {e}")
-            try:
-                await self._client.stop_notify(
-                    self.DOT_MediumPayload_CharacteristicUUID
-                )
-            except bleak.exc.BleakError as e:
-                print(f"Error stopping notification: {e}")
+        try:
+            await self.disable_sensor(
+                self.DOT_Control_CharacteristicUUID, self.Deselect_ratequantities
+            )
+            print("disable sensor successful")
+        except bleak.exc.BleakError as e:
+            print(f"Error disable sensor: {e}")
+        try:
+            await self._client.stop_notify(self.DOT_MediumPayload_CharacteristicUUID)
+        except bleak.exc.BleakError as e:
+            print(f"Error stopping notification: {e}")
 
     # Heading Reset
     async def doHeadingReset(self):
@@ -459,14 +353,6 @@ class BleSensor:
         t = bytes.fromhex(data[:8])
         return struct.unpack("<I", t)[0]
 
-    # def convertSensorData(sensor, data, measuringPayloadId, isSyncingEnabled):
-    #     if isSyncingEnabled:
-    #         self.syncTimestamp = self.timeStampConvert(data)
-    #     else:
-    #         hrTime = process.hrtime()
-    #         systemtime = hrTime[0] * 1000000 + hrTime[1] / 1000
-    #         self.setSynchronizedTimestamp(data, systemtime)
-
     def setSynchronizedTimestamp(self, data):
         # dt = datetime.now()
         # systemTime = dt.microsecond
@@ -489,78 +375,6 @@ class BleSensor:
             self.syncTimestamp = rootTime
         return self.syncTimestamp
 
-    def accConvert(self, data):
-        AccX = struct.unpack("<f", bytes.fromhex(data[8:16]))[0]
-        AccY = struct.unpack("<f", bytes.fromhex(data[16:24]))[0]
-        AccZ = struct.unpack("<f", bytes.fromhex(data[24:32]))[0]
-        Acc = np.array([AccX, AccY, AccZ])
-        return Acc
-
-    def eulerConvert(self, data):
-        roll = struct.unpack("<f", bytes.fromhex(data[8:16]))[0]
-        pitch = struct.unpack("<f", bytes.fromhex(data[16:24]))[0]
-        yaw = struct.unpack("<f", bytes.fromhex(data[24:32]))[0]
-        euler = np.array([roll, pitch, yaw])
-        return euler
-
-    def quaternionConvert(self, data):
-        # unpacks the 4-byte data from the 8th to the 16th hex digit, convert to a float
-        w = struct.unpack("<f", bytes.fromhex(data[8:16]))[0]
-        x = struct.unpack("<f", bytes.fromhex(data[16:24]))[0]
-        y = struct.unpack("<f", bytes.fromhex(data[24:32]))[0]
-        z = struct.unpack("<f", bytes.fromhex(data[32:40]))[0]
-        quat = np.array([w, x, y, z])
-        return quat
-
-    def orientationEuler_notification_handler(self, sender, data):
-        # 20 bytes of data, only the first 16 bytes valid
-        hexData = data.hex()
-        time = self.setSynchronizedTimestamp(hexData)
-        euler = self.eulerConvert(hexData)
-        stringToPrint = "Time: {:.0f}, Roll: {:.1f}, Pitch: {:.1f}, Yaw: {:.1f}".format(
-            time, euler[0], euler[1], euler[2]
-        )
-        print(stringToPrint)
-
-    def customMode1_notification_handler(self, sender, data):
-        hexData = data.hex()
-        time = self.setSynchronizedTimestamp(hexData)
-        euler = self.eulerConvert(hexData)
-        freeAccX = struct.unpack("<f", bytes.fromhex(hexData[32:40]))[0]
-        freeAccY = struct.unpack("<f", bytes.fromhex(hexData[40:48]))[0]
-        freeAccZ = struct.unpack("<f", bytes.fromhex(hexData[48:56]))[0]
-        freeAcc = np.array([freeAccX, freeAccY, freeAccZ])
-        gyroX = struct.unpack("<f", bytes.fromhex(hexData[56:64]))[0]
-        gyroY = struct.unpack("<f", bytes.fromhex(hexData[64:72]))[0]
-        gyroZ = struct.unpack("<f", bytes.fromhex(hexData[72:80]))[0]
-        gyro = np.array([gyroX, gyroY, gyroZ])
-        stringToPrint = "Time: {:.0f}, Roll: {:.1f}, Pitch: {:.1f}, Yaw: {:.1f}".format(
-            time, euler[0], euler[1], euler[2]
-        )
-        stringToPrint += (
-            ", freeAccX: {:.1f}, freeAccY: {:.1f}, freeAccZ: {:.1f}".format(
-                freeAccX, freeAccY, freeAccZ
-            )
-        )
-        stringToPrint += ", gyroX: {:.1f}, gyroY: {:.1f}, gyroZ: {:.1f}".format(
-            gyroX, gyroY, gyroZ
-        )
-        stringToPrint += " "
-        print(stringToPrint)
-
-    def orientationQuaternion_notification_handler(self, sender, data):
-        # print(f"Received data: {data.hex()}")
-        # 20 bytes of data
-        hexData = data.hex()
-        time = self.setSynchronizedTimestamp(hexData)
-        quat = self.quaternionConvert(hexData)
-        stringToPrint = (
-            "Time: {:.0f}, q0: {:.1f}, q1: {:.1f}, q2: {:.1f}, q3: {:.1f}".format(
-                time, quat[0], quat[1], quat[2], quat[3]
-            )
-        )
-        print(stringToPrint)
-
     async def add_to_queue(self, sensor_data):
         if self.queue is not None:
             if not self.queue.empty():
@@ -568,14 +382,15 @@ class BleSensor:
             else:
                 self.queue.put(sensor_data)
 
-            # print("Data in queue")
-            # await asyncio.sleep(0.01)
-
     def rateQuantities_notification_handler(self, sender, data):
-        # print("YOOOOOO")
         hexData = data.hex()
-        time = self.setSynchronizedTimestamp(hexData)
-        acc = self.accConvert(hexData)
+        # time = self.setSynchronizedTimestamp(hexData)
+
+        AccX = struct.unpack("<f", bytes.fromhex(hexData[8:16]))[0]
+        AccY = struct.unpack("<f", bytes.fromhex(hexData[16:24]))[0]
+        AccZ = struct.unpack("<f", bytes.fromhex(hexData[24:32]))[0]
+        acc = np.array([AccX, AccY, AccZ])
+
         gyroX = struct.unpack("<f", bytes.fromhex(hexData[32:40]))[0]
         gyroY = struct.unpack("<f", bytes.fromhex(hexData[40:48]))[0]
         gyroZ = struct.unpack("<f", bytes.fromhex(hexData[48:56]))[0]
@@ -585,37 +400,6 @@ class BleSensor:
         magY = struct.unpack("<h", bytes.fromhex(hexData[60:64]))[0] / (2**12)
         magZ = struct.unpack("<h", bytes.fromhex(hexData[64:68]))[0] / (2**12)
         mag = np.array([magX, magY, magZ])
-        stringToPrint = " "
-        if time is None:
-            time = 0
-        stringToPrint += "{:.0f}".format(time)
-        stringToPrint += "AccX: {:.4f}, AccY: {:.4f}, AccZ: {:.4f}".format(
-            acc[0], acc[1], acc[2]
-        )
-        stringToPrint += " gyroX: {:.4f}, gyroY: {:.4f}, gyroZ: {:.4f}".format(
-            gyroX, gyroY, gyroZ
-        )
 
-        stringToPrint += " magX: {:.4f}, magY: {:.4f}, magZ: {:.4f}".format(
-            magX, magY, magZ
-        )
-        stringToPrint += " "
-        # print(stringToPrint)
         sensor_data = {"gyro": gyro, "acc": acc, "mag": mag}
         asyncio.create_task(self.add_to_queue(sensor_data))
-
-        # count how many times this fn is called per secondx
-        self.notification_counter += 1
-
-        if self.start_time is None:
-            self.start_time = datetime.now()
-
-        current_time = datetime.now()
-        elapsed_time = (current_time - self.start_time).total_seconds()
-
-        if elapsed_time >= 1:
-            # rate_per_second = self.notification_counter / elapsed_time
-            # print(f"Rate per second: {rate_per_second}")
-            # Reset counter and timer
-            self.notification_counter = 0
-            self.start_time = datetime.now()
