@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "movella-dot"
+version = "0.0.1"
+authors = [
+  { name="Simon Bachhuber", email="simon.bachhuber@fau.de" },
+]
+description = "Use Movella Dot IMUs in Python easily"
+readme = "readme.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+]
+
+[project.urls]
+Homepage = "https://github.com/SimiPixel/movella_dot"
+Issues = "https://github.com/SimiPixel/movella_dot/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
