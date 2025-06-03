@@ -38,12 +38,20 @@ class DotSensor:
         self.name = None
         self._latest_measurements = None
         self.queue = queue
+        self._disconnected_handler_registered = False
+        self._last_data_time = 0
+        self._is_alive = False
 
     async def connect(self):
         """Connect to the sensor."""
         try:
             self._client = bleak.BleakClient(self.address)
             await self._client.connect()
+
+            # Register disconnection callback if not already registered
+            if not self._disconnected_handler_registered:
+                self._client.set_disconnected_callback(self._handle_disconnect)
+                self._disconnected_handler_registered = True
 
             # Discover services and characteristics
             for service in self._client.services:
@@ -57,16 +65,26 @@ class DotSensor:
             # Get the device name
             self.name = await self.get_device_tag()
             print(f"Connected to {self.name} ({self.address})")
+            self._is_alive = True
 
             return True
         except Exception as e:
             print(f"Failed to connect to {self.address}: {e}")
+            self._is_alive = False
             return False
+
+    def _handle_disconnect(self, client):
+        """Handle unexpected disconnection."""
+        print(f"Device {self.name} ({self.address}) disconnected unexpectedly")
+        self._is_alive = False
+        # We don't need to do anything else here as the is_connected check in the
+        # main loop will handle the rest
 
     async def disconnect(self):
         """Disconnect from the sensor."""
         if self._client and self._client.is_connected:
             try:
+                self._is_alive = False
                 await self._client.disconnect()
                 print(f"Disconnected from {self.address}")
                 return True
@@ -82,7 +100,7 @@ class DotSensor:
         """
         if self._client is None:
             return False
-        return self._client.is_connected
+        return self._client.is_connected and self._is_alive
 
     async def get_device_tag(self) -> str:
         """Get the device name/tag."""
@@ -186,6 +204,8 @@ class DotSensor:
 
     def _notification_handler(self, _: Any, data: bytearray):
         """Handle incoming sensor data notifications."""
+        self._last_data_time = asyncio.get_event_loop().time()
+
         hex_data = data.hex()
 
         # Extract timestamp (first 4 bytes)
