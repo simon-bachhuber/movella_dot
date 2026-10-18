@@ -1,48 +1,33 @@
-# Movella DOT IMU Sensor Manager
+# movella_dot
 
-A Python library for managing and collecting data from Movella DOT inertial measurement unit (IMU) sensors via Bluetooth Low Energy (BLE).
+A small Python library for streaming data from Bluetooth IMUs:
 
-## Features
-
-- **Multi-sensor support**: Connect to multiple Movella DOT devices simultaneously
-- **Asynchronous data collection**: Non-blocking sensor communication using asyncio
-- **Real-time monitoring**: Continuous data streaming with connection status tracking
-- **Configurable output rates**: Support for 1-120 Hz sampling rates
-- **Battery monitoring**: Check battery level and charging status
-- **Automatic reconnection handling**: Robust connection management with disconnect detection
+- **Movella DOT** (Bluetooth Low Energy, via `bleak`)
+- **WitMotion BWT901 / BWT901CL** (Bluetooth Classic serial port, via `pyserial`)
 
 ## Installation
 
 ```bash
-# Install required dependencies
-pip install asyncio bleak numpy
+pip install -e .
 ```
 
-## Quick Start
+Requires Python ≥ 3.10. Dependencies: `bleak`, `numpy`, `pyserial`.
+
+## Movella DOT
 
 ```python
-from movella_dot_imus import MovellaDotIMUs
+from movella_dot import MovellaDotIMUs
 
-# Initialize sensor manager
-imu_manager = MovellaDotIMUs(output_rate=60, timeout=3)
+# Scans for all Movella DOT devices and starts streaming in a background process
+imus = MovellaDotIMUs(output_rate=60, timeout=3)
 
-# Get latest measurements from all connected sensors
-measurements = imu_manager.get_latest_measurements()
+for address, data in imus.get_latest_measurements().items():
+    print(data["device"], data["acc"], data["gyr"], data["mag"], data["is_alive"])
 
-for address, data in measurements.items():
-    print(f"Sensor {data['device']}:")
-    print(f"  Acceleration: {data['acc']} m/s²")
-    print(f"  Gyroscope: {data['gyr']} deg/s")
-    print(f"  Magnetometer: {data['mag']}")
-    print(f"  Connected: {data['is_alive']}")
-
-# Clean up when done
-imu_manager.close()
+imus.close()
 ```
 
-## Data Structure
-
-Each sensor returns a dictionary with the following data:
+Each sensor returns:
 
 ```python
 {
@@ -55,31 +40,59 @@ Each sensor returns a dictionary with the following data:
 }
 ```
 
-## Configuration
+Supported output rates: 1, 4, 10, 12, 15, 20, 30, 60, 120 Hz.
 
-### Output Rates
-Supported sampling rates: 1, 4, 10, 12, 15, 20, 30, 60, 120 Hz
+Because `MovellaDotIMUs` uses `multiprocessing`, your script needs an
+`if __name__ == "__main__":` guard on macOS and Windows.
 
-### Initialization Parameters
-- `output_rate`: Sensor sampling rate in Hz (default: 60)
-- `timeout`: Connection timeout in seconds (default: 3)
+## WitMotion BWT901
 
-## Architecture
+Pair the sensors at the OS level first:
 
-- **MovellaDotIMUs**: Main interface class running sensors in a separate process
-- **IMUProcess**: Async process manager handling multiple sensor connections
-- **DotSensor**: Individual sensor interface with BLE communication
-- **Scanner**: Device discovery utility (referenced but not included)
+- **Linux**: pair (PIN `1234`), then bind a serial port per sensor:
+  `sudo rfcomm bind 0 <MAC>` → `/dev/rfcomm0`
+- **macOS**: pair in Bluetooth settings; the sensor appears as `/dev/tty.HC-06*`
 
-## Requirements
+```python
+from movella_dot import WitMotionIMUs
 
-- Python 3.7+
-- Movella DOT sensors with BLE capability
-- Compatible Bluetooth adapter
+with WitMotionIMUs(sampling_rate=50) as imus:  # auto-discovers ports
+    data = imus.get_latest_measurements()
 
-## Notes
+# or with explicit ports
+imus = WitMotionIMUs(sampling_rate=50, ports=["/dev/rfcomm0", "/dev/rfcomm1"])
+imus.start()
+...
+imus.close()
+```
 
-- Sensors are automatically discovered during initialization
-- Data collection runs in a separate process to avoid blocking the main application
-- Connection status is continuously monitored with automatic disconnect detection
-- Failed connections are gracefully handled with status reporting
+Each sensor (keyed by serial port) returns the following. Values are `None`
+until the first packet of that type has arrived.
+
+```python
+{
+    "acc": np.array([x, y, z]),             # m/s²
+    "gyr": np.array([x, y, z]),             # deg/s
+    "angle": np.array([roll, pitch, yaw]),  # deg
+    "mag": np.array([x, y, z]),             # raw
+    "quat": np.array([q0, q1, q2, q3]),     # normalised
+    "temp": 25.3,                           # °C
+}
+```
+
+Supported rates: 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 125, 200 Hz.
+Per-device commands (calibration, 6/9-axis algorithm, ...) are available via
+`imus.get_reader(port)`.
+
+> **macOS limitations:** only tested on Linux. On macOS the sampling-rate
+> command may be ignored by the sensor (it is sent without the unlock prefix),
+> and auto-discovery only matches `/dev/tty.HC-06*` / `/dev/tty.BWT901*`.
+> A `RuntimeWarning` is emitted on `start()` when running on macOS.
+
+Quick test from the command line:
+
+```bash
+python -m movella_dot.witmotion --rate 50
+```
+
+The protocol datasheet is in [`docs/BWT901_Datasheet.pdf`](docs/BWT901_Datasheet.pdf).
